@@ -13,6 +13,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -20,13 +21,11 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -381,7 +380,22 @@ fun LibraryScreen(store: AppStore) {
         }
     }
 
-    Column(modifier = Modifier.fillMaxSize()) {
+    // Single scrollable home list: header, search, all
+    // Downloads & settings cards, and the library live in
+    // ONE LazyColumn, so the whole home scrolls together
+    // in portrait and landscape. Never nest a grid/list
+    // inside a scrolling Column again — that was the bug:
+    // a plain Column with no verticalScroll, followed by a
+    // fillMaxSize library list with no weight, clipped the
+    // library and left the settings cards unscrollable.
+    BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+        val gridColumns = maxOf(1, (maxWidth / 140.dp).toInt())
+        LazyColumn(
+            modifier = Modifier.fillMaxSize(),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+            contentPadding = PaddingValues(bottom = 16.dp)
+        ) {
+        item {
         // Header
         Row(
             modifier = Modifier.fillMaxWidth().padding(16.dp),
@@ -398,6 +412,8 @@ fun LibraryScreen(store: AppStore) {
                 Text(if (grid) "List" else "Grid")
             }
         }
+        }
+        item {
         // Search + sort + favourites
         Row(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
@@ -434,7 +450,9 @@ fun LibraryScreen(store: AppStore) {
                 }
             }
         }
-        Spacer(modifier = Modifier.height(8.dp))
+        }
+        item {
+        Column {
         // Downloads & settings — one grouped section, in the
         // order a new user needs them: import, then the two
         // downloads that gate play and shaders, then covers,
@@ -458,7 +476,8 @@ fun LibraryScreen(store: AppStore) {
                 Text("Import folder")
             }
         }
-        Spacer(modifier = Modifier.height(8.dp))
+        }
+        item {
         // Core card (never a dead Play button)
         Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
             Column(modifier = Modifier.padding(12.dp)) {
@@ -497,7 +516,8 @@ fun LibraryScreen(store: AppStore) {
                 }
             }
         }
-        Spacer(modifier = Modifier.height(8.dp))
+        }
+        item {
         // Shader pack card
         Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
             Column(modifier = Modifier.padding(12.dp)) {
@@ -552,7 +572,8 @@ fun LibraryScreen(store: AppStore) {
                 }
             }
         }
-        Spacer(modifier = Modifier.height(8.dp))
+        }
+        item {
         // Covers card — bulk search lives here, and only
         // here, so there is exactly one place to run it.
         Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
@@ -607,7 +628,8 @@ fun LibraryScreen(store: AppStore) {
                 }
             }
         }
-        Spacer(modifier = Modifier.height(8.dp))
+        }
+        item {
         // Global controller overlay — the same controls
         // as the per-game overlay section, with no game
         // id, so this is the all-games default. Per-game
@@ -628,84 +650,97 @@ fun LibraryScreen(store: AppStore) {
                 OverlaySettings(store = store, gameId = null)
             }
         }
-        Spacer(modifier = Modifier.height(8.dp))
-        // Library
+        }
+        // Library — inside the same LazyColumn: grid mode
+        // chunks games into rows (gridColumns per row, from
+        // the 140dp tile width the old grid used), list mode
+        // is one row per game. No nested scrollable.
         if (shown.isEmpty()) {
-            Box(
-                modifier = Modifier.fillMaxSize().padding(24.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    if (games.isEmpty()) {
-                        "No games yet. Import a .smc, .sfc, or .zip " +
-                            "ROM you already own — it is copied into " +
-                            "the app, and your original is never touched."
-                    } else {
-                        "Nothing matches that search."
-                    },
-                    style = MaterialTheme.typography.bodyMedium
-                )
-            }
-        } else if (grid) {
-            LazyVerticalGrid(
-                columns = GridCells.Adaptive(140.dp),
-                modifier = Modifier.fillMaxSize().padding(horizontal = 12.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                items(shown, key = { it.id }) { game ->
-                    GameTile(
-                        game = game,
-                        artTick = artTick,
-                        isFav = game.id in favIds,
-                        onPlay = { play(game) },
-                        onDetail = { detail = game },
-                        onFav = {
-                            GameLibrary.setFavorite(
-                                store, game.id, game.id !in favIds
-                            )
-                            refresh()
-                        }
+            item {
+                Box(
+                    modifier = Modifier.fillMaxWidth().padding(24.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        if (games.isEmpty()) {
+                            "No games yet. Import a .smc, .sfc, or .zip " +
+                                "ROM you already own — it is copied into " +
+                                "the app, and your original is never touched."
+                        } else {
+                            "Nothing matches that search."
+                        },
+                        style = MaterialTheme.typography.bodyMedium
                     )
                 }
             }
-        } else {
-            LazyColumn(modifier = Modifier.fillMaxSize()) {
-                items(shown, key = { it.id }) { game ->
-                    Row(
-                        modifier = Modifier.fillMaxWidth()
-                            .combinedClickable(
-                                onClick = { play(game) },
-                                onLongClick = { detail = game }
-                            )
-                            .padding(12.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            game.title,
+        } else if (grid) {
+            items(
+                shown.chunked(gridColumns),
+                key = { row -> row.first().id }
+            ) { row ->
+                Row(
+                    modifier = Modifier.fillMaxWidth()
+                        .padding(horizontal = 12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    row.forEach { game ->
+                        GameTile(
                             modifier = Modifier.weight(1f),
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
+                            game = game,
+                            artTick = artTick,
+                            isFav = game.id in favIds,
+                            onPlay = { play(game) },
+                            onDetail = { detail = game },
+                            onFav = {
+                                GameLibrary.setFavorite(
+                                    store, game.id, game.id !in favIds
+                                )
+                                refresh()
+                            }
                         )
-                        IconButton(onClick = {
-                            GameLibrary.setFavorite(
-                                store, game.id, game.id !in favIds
-                            )
-                            refresh()
-                        }) {
-                            Icon(
-                                if (game.id in favIds) {
-                                    Icons.Filled.Star
-                                } else {
-                                    Icons.Outlined.StarBorder
-                                },
-                                contentDescription = "Favourite"
-                            )
-                        }
+                    }
+                    repeat(gridColumns - row.size) {
+                        Spacer(modifier = Modifier.weight(1f))
+                    }
+                }
+            }
+        } else {
+            items(shown, key = { it.id }) { game ->
+                Row(
+                    modifier = Modifier.fillMaxWidth()
+                        .combinedClickable(
+                            onClick = { play(game) },
+                            onLongClick = { detail = game }
+                        )
+                        .padding(12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        game.title,
+                        modifier = Modifier.weight(1f),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    IconButton(onClick = {
+                        GameLibrary.setFavorite(
+                            store, game.id, game.id !in favIds
+                        )
+                        refresh()
+                    }) {
+                        Icon(
+                            if (game.id in favIds) {
+                                Icons.Filled.Star
+                            } else {
+                                Icons.Outlined.StarBorder
+                            },
+                            contentDescription = "Favourite"
+                        )
                     }
                 }
             }
         }
+        } // close LazyColumn
+    } // close BoxWithConstraints
     }
 
     // Detail dialog
@@ -792,6 +827,7 @@ fun LibraryScreen(store: AppStore) {
 
 @Composable
 private fun GameTile(
+    modifier: Modifier = Modifier,
     game: GameEntry,
     artTick: Int,
     isFav: Boolean,
@@ -817,7 +853,7 @@ private fun GameTile(
         }
     }
     Card(
-        modifier = Modifier.combinedClickable(
+        modifier = modifier.combinedClickable(
             onClick = onPlay,
             onLongClick = onDetail
         )
