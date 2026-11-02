@@ -477,6 +477,7 @@ fun LibraryScreen(store: AppStore) {
             }
         }
         }
+        }
         item {
         // Core card (never a dead Play button)
         Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
@@ -741,7 +742,6 @@ fun LibraryScreen(store: AppStore) {
         }
         } // close LazyColumn
     } // close BoxWithConstraints
-    }
 
     // Detail dialog
     val d = detail
