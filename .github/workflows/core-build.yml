@@ -1,0 +1,192 @@
+name: Core builds
+
+# Super Shelf: one core only, built from pinned source in CI.
+# Snes9x via ndk-build from libretro/jni (verified against the
+# pinned tree, not assumed). Pin is a full commit SHA, never a tag.
+# Verification before upload: one ELF 64-bit ARM aarch64 shared
+# object, over 100KB, exporting the retro_* entry set.
+# The publish job publishes the core plus a cores.json manifest
+# to a dedicated `cores` release in THIS repo (never Mariner's).
+# The app verifies every download against cores.json + its
+# detached signature before loading it. The private signing key
+# lives only as the CORES_SIGNING_KEY repo secret; a missing
+# secret fails the publish loudly, never silently unsigned.
+#
+# Snes9x licence is non-commercial: this app must stay free.
+
+on:
+  workflow_dispatch:
+    inputs:
+      sign_only:
+        description: "Only re-sign the live cores.json (skip rebuild + publish)"
+        type: boolean
+        default: false
+  push:
+    paths:
+      - '.github/workflows/core-build.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  build-core:
+    if: ${{ !inputs.sign_only }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out core source at pin
+        uses: actions/checkout@v4
+        with:
+          repository: snes9xgit/snes9x
+          ref: 1bcc369e89f08243e0a462882fb1f3e42e51de3a
+          path: core
+          fetch-depth: 0
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v4
+
+      - name: Install NDK 27
+        run: sdkmanager "ndk;27.0.12077973"
+
+      - name: Build core
+        run: |
+          set -euo pipefail
+          NDK="$ANDROID_HOME/ndk/27.0.12077973"
+          if [ ! -d "$NDK" ]; then
+            echo "NDK dir missing: $NDK"
+            ls "$ANDROID_HOME/ndk" || true
+            exit 1
+          fi
+          NDK_BUILD="$NDK/ndk-build"
+          if [ ! -x "$NDK_BUILD" ]; then
+            echo "ndk-build missing from NDK 27: $NDK_BUILD"
+            exit 1
+          fi
+          if grep -qE "NDK_TOOLCHAIN_VERSION|gnustl" "core/libretro/jni/Application.mk"; then
+            echo "Application.mk uses a toolchain ndk-build no longer supports"
+            cat "core/libretro/jni/Application.mk"
+            exit 1
+          fi
+          cd "core/libretro/jni"
+          "$NDK_BUILD" -j"$(nproc)" APP_ABI=arm64-v8a APP_PLATFORM=android-21
+          cd "$GITHUB_WORKSPACE"
+          FOUND=$(find core -path "*/libs/arm64-v8a/*.so")
+          COUNT=$(printf "%s\n" "$FOUND" | grep -c . || true)
+          if [ "$COUNT" -ne 1 ]; then
+            echo "expected exactly one built .so, found $COUNT:"
+            printf "%s\n" "$FOUND"
+            exit 1
+          fi
+          mkdir -p out
+          cp "$FOUND" "out/snes9x_libretro_android.so"
+          echo "BUILT_SO=out/snes9x_libretro_android.so" >> "$GITHUB_ENV"
+
+      - name: Verify core
+        run: |
+          set -euo pipefail
+          SO="$BUILT_SO"
+          file "$SO"
+          file "$SO" | grep -q "ELF 64-bit.*ARM aarch64" || {
+            echo "not an ARM64 ELF: $(file "$SO")"
+            exit 1
+          }
+          SIZE=$(stat -c%s "$SO")
+          echo "size: $SIZE bytes"
+          if [ "$SIZE" -le 102400 ]; then
+            echo "core implausibly small: $SIZE bytes"
+            exit 1
+          fi
+          NM="$ANDROID_HOME/ndk/27.0.12077973/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-nm"
+          EXPORTS=$("$NM" -D "$SO")
+          for sym in retro_api_version retro_get_system_info retro_get_system_av_info retro_set_environment retro_set_video_refresh retro_set_audio_sample_batch retro_set_input_poll retro_set_input_state retro_init retro_deinit retro_load_game retro_run retro_reset retro_serialize_size retro_serialize retro_unserialize retro_get_memory_data retro_get_memory_size; do
+            echo "$EXPORTS" | grep -q " $sym" || {
+              echo "missing export: $sym"
+              echo "$EXPORTS"
+              exit 1
+            }
+          done
+          echo "core=snes9x pin=1bcc369e89f08243e0a462882fb1f3e42e51de3a size=$SIZE sha256=$(sha256sum "$SO" | cut -d' ' -f1)" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload core artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: snes9x-libretro-android
+          path: ${{ env.BUILT_SO }}
+          if-no-files-found: error
+
+  publish:
+    if: ${{ !inputs.sign_only }}
+    needs: build-core
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Check out repo for gh
+        uses: actions/checkout@v4
+      - name: Download built core from this run
+        uses: actions/download-artifact@v4
+        with:
+          pattern: '*-libretro-android'
+          path: artifacts
+
+      - name: Build manifest and publish cores release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CORES_SIGNING_KEY: ${{ secrets.CORES_SIGNING_KEY }}
+        run: |
+          set -euo pipefail
+          python3 - << 'PYEOF'
+          import hashlib, json, os
+          fname = "snes9x_libretro_android.so"
+          found = []
+          for root, _, files in os.walk("artifacts"):
+              if fname in files:
+                  found.append(os.path.join(root, fname))
+          assert len(found) == 1, (fname, found)
+          data = open(found[0], "rb").read()
+          entries = [{
+              "key": "snes9x",
+              "file": fname,
+              "size": len(data),
+              "sha256": hashlib.sha256(data).hexdigest(),
+              "pin": "1bcc369e89f08243e0a462882fb1f3e42e51de3a",
+              "consoles": ["snes"],
+          }]
+          with open("cores.json", "w") as f:
+              json.dump({"cores": entries}, f, indent=2)
+              f.write("\n")
+          print(open("cores.json").read())
+          PYEOF
+          gh release view cores >/dev/null 2>&1 || gh release create cores \
+            --title "Emulator cores" \
+            --notes "Source-built Snes9x libretro core for Super Shelf, published by the Core builds workflow. The app verifies every download against cores.json before loading it."
+          gh release upload cores artifacts/*/*.so cores.json --clobber
+          if [ -z "${CORES_SIGNING_KEY:-}" ]; then echo "CORES_SIGNING_KEY secret is empty; refusing to publish an unsigned manifest" >&2; exit 1; fi
+          trap 'rm -f signing-key.pem pubkey.pem' EXIT
+          printf '%s' "$CORES_SIGNING_KEY" > signing-key.pem
+          openssl dgst -sha256 -sign signing-key.pem -out cores.json.sig cores.json
+          openssl ec -in signing-key.pem -pubout -out pubkey.pem
+          openssl dgst -sha256 -verify pubkey.pem -signature cores.json.sig cores.json
+          gh release upload cores cores.json.sig --clobber
+
+  sign-manifest:
+    if: ${{ inputs.sign_only }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Check out repo for gh
+        uses: actions/checkout@v4
+      - name: Sign live manifest and publish signature
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CORES_SIGNING_KEY: ${{ secrets.CORES_SIGNING_KEY }}
+        run: |
+          set -euo pipefail
+          trap 'rm -f signing-key.pem pubkey.pem' EXIT
+          if [ -z "${CORES_SIGNING_KEY:-}" ]; then echo "CORES_SIGNING_KEY secret is empty" >&2; exit 1; fi
+          gh release download cores -p cores.json
+          printf '%s' "$CORES_SIGNING_KEY" > signing-key.pem
+          openssl dgst -sha256 -sign signing-key.pem -out cores.json.sig cores.json
+          openssl ec -in signing-key.pem -pubout -out pubkey.pem
+          openssl dgst -sha256 -verify pubkey.pem -signature cores.json.sig cores.json
+          gh release upload cores cores.json.sig --clobber

@@ -1,0 +1,52 @@
+name: Shader pack publish
+
+# Publishes the Mega Bezel (adapted) preset pack to a dedicated
+# `shaders` release in this repo. The pack is preset values only
+# (see shaders-pack/README.md) — no upstream shader code or art.
+# The manifest signature (shaders.json.sig) is committed beside
+# shaders.json and must match its bytes exactly; the app verifies
+# it against the pinned shaders public key before installing.
+# Local release-asset uploads fail through the API surrogate, so
+# publishing happens here in Actions, never from a local machine.
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/shaders.yml'
+      - 'shaders-pack/shaders.json'
+      - 'shaders-pack/shaders.json.sig'
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Verify the committed signature matches the manifest
+        run: |
+          set -euo pipefail
+          python3 - << 'PYEOF'
+          import base64
+          # Pinned shaders public key, as in ShaderPack.kt (X.509 DER, base64).
+          pub_b64 = "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAERCPX1ghJuJPpPyZF9cg6wityBlg3stfMdom2TSY84an6tmeDUaJ1UQUYPKJHJForVcsgJXl4oCwfO9tgro5Fzg=="
+          open("pubkey.der", "wb").write(base64.b64decode(pub_b64))
+          PYEOF
+          openssl pkey -pubin -inform DER -in pubkey.der -out pubkey.pem
+          openssl dgst -sha256 -verify pubkey.pem \
+            -signature shaders-pack/shaders.json.sig shaders-pack/shaders.json
+          rm -f pubkey.der pubkey.pem
+
+      - name: Publish shaders release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh release view shaders >/dev/null 2>&1 || gh release create shaders \
+            --title "Shader presets (Mega Bezel, adapted)" \
+            --notes "Adapted Mega Bezel reflective preset values for Super Shelf, published by the Shader pack publish workflow. The app verifies shaders.json against its detached signature before installing. Preset names are Mega Bezel's own, credited to upstream; output is an adaptation, not RetroArch output."
+          gh release upload shaders shaders-pack/shaders.json shaders-pack/shaders.json.sig --clobber

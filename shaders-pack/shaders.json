@@ -1,0 +1,54 @@
+{
+  "version": 1,
+  "credit": "Preset names are Mega Bezel's own, credited to upstream (HyperspaceMadness/Mega_Bezel). These are adapted values for Super Shelf's native CRT chain, not RetroArch slang presets, and the output is not RetroArch-identical. This pack contains preset values only — no upstream shader code or bezel artwork is re-hosted here.",
+  "presets": [
+    {
+      "name": "MBZ__3__STD",
+      "credit": "Mega Bezel preset, adapted for Super Shelf",
+      "bezelColor": "#FF101010",
+      "reflection": 0.55,
+      "scan": 0.30,
+      "blur": 0.10,
+      "curveOn": true,
+      "curveAmount": 30,
+      "roundOn": true,
+      "roundAmount": 20
+    },
+    {
+      "name": "MBZ__3__STD-GLASS",
+      "credit": "Mega Bezel preset, adapted for Super Shelf",
+      "bezelColor": "#FF181818",
+      "reflection": 0.40,
+      "scan": 0.30,
+      "blur": 0.10,
+      "curveOn": true,
+      "curveAmount": 30,
+      "roundOn": true,
+      "roundAmount": 20
+    },
+    {
+      "name": "MBZ__1__ADV",
+      "credit": "Mega Bezel preset, adapted for Super Shelf",
+      "bezelColor": "#FF0C0C0C",
+      "reflection": 0.65,
+      "scan": 0.35,
+      "blur": 0.15,
+      "curveOn": true,
+      "curveAmount": 30,
+      "roundOn": true,
+      "roundAmount": 20
+    },
+    {
+      "name": "MBZ__2__ADV-GLASS",
+      "credit": "Mega Bezel preset, adapted for Super Shelf",
+      "bezelColor": "#FF141414",
+      "reflection": 0.45,
+      "scan": 0.35,
+      "blur": 0.15,
+      "curveOn": true,
+      "curveAmount": 30,
+      "roundOn": true,
+      "roundAmount": 20
+    }
+  ]
+}
