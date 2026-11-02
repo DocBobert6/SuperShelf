@@ -124,6 +124,73 @@ object ShaderPack {
     fun presetByName(context: Context, name: String): ReflectivePreset? =
         installed(context).firstOrNull { it.name == name }
 
+    /** App-wide default preset setting. Blank = not set by the
+     * user; [VIOLET_KEY] = the user explicitly chose the built-in
+     * Violet CRT fallback instead of a Mega Bezel preset. */
+    const val DEFAULT_KEY = "defaultShaderPreset"
+
+    /** Sentinel stored when the user explicitly picks the built-in
+     * Violet CRT look. It is never a preset name and never shown
+     * as one; the UI labels it "Violet (built-in CRT fallback)". */
+    const val VIOLET_KEY = "VIOLET"
+
+    /** Per-game shader setting key (blank = use the default). */
+    fun perGameKey(gameId: String): String = "gameShaderPreset:$gameId"
+
+    /** Only presets with a reflection actually count as
+     * reflective. A preset with reflection 0 is never offered
+     * as a Mega Bezel (adapted) — with reflections choice, and
+     * never becomes a default. */
+    fun reflectivePresets(
+        installed: List<ReflectivePreset>
+    ): List<ReflectivePreset> = installed.filter { it.reflection > 0f }
+
+    /** The default's effective preset name, or null for Violet:
+     * an explicit default wins when it is still an installed
+     * reflective preset; otherwise, when a pack is installed,
+     * the first reflective preset is the default; with no pack,
+     * the fallback is Violet. An explicit Violet choice is
+     * honoured even when a pack is installed. */
+    fun defaultEffectiveName(
+        store: app.supershelf.data.AppStore,
+        installed: List<ReflectivePreset>
+    ): String? {
+        val refl = reflectivePresets(installed)
+        val def = store.setting(DEFAULT_KEY, "")
+        if (def == VIOLET_KEY) return null
+        if (def.isNotBlank() && refl.any { it.name == def }) return def
+        return refl.firstOrNull()?.name
+    }
+
+    /** Effective preset name for one game, or null for Violet:
+     * a per-game choice wins when it is still an installed
+     * reflective preset; a per-game choice naming a preset that
+     * is no longer installed (or is non-reflective) falls
+     * through to the default rather than silently to Violet;
+     * blank per-game means "use the default". */
+    fun effectivePresetName(
+        store: app.supershelf.data.AppStore,
+        gameId: String?,
+        installed: List<ReflectivePreset>
+    ): String? {
+        if (gameId == null) return defaultEffectiveName(store, installed)
+        val refl = reflectivePresets(installed)
+        val per = store.setting(perGameKey(gameId), "")
+        if (per == VIOLET_KEY) return null
+        if (per.isNotBlank() && refl.any { it.name == per }) return per
+        return defaultEffectiveName(store, installed)
+    }
+
+    fun effectivePreset(
+        store: app.supershelf.data.AppStore,
+        gameId: String?,
+        installed: List<ReflectivePreset>
+    ): ReflectivePreset? {
+        val name = effectivePresetName(store, gameId, installed)
+            ?: return null
+        return installed.firstOrNull { it.name == name }
+    }
+
     /** Download + install into [context]'s pack dir. Returns the
      * installed presets, or a failure naming the refusal reason. */
     suspend fun downloadTo(context: Context): Result<List<ReflectivePreset>> =

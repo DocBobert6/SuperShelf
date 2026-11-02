@@ -326,6 +326,46 @@ private fun GameScreen(
                 ) / 100f
             else 0f
         )
+        // Mega Bezel (adapted) override, applied last
+        // at session start so it wins over Violet:
+        // the preset's scan/blur/curve/round drive the
+        // picture, and its frame + reflection are drawn
+        // by the bezel composable below. Two calls are
+        // deliberate: nativeSetShader sets the shared
+        // scan/blur globals but also switches the mode
+        // to the legacy pass, so nativeSetCrtShader
+        // restores the CRT chain mode while keeping
+        // those globals. Colour is neutral here — a
+        // Mega Bezel preset must not inherit Violet's
+        // warm grade. A shader change made in the
+        // library applies on the next launch, never
+        // mid-session (the surface must not move).
+        val bezel = ShaderPack.effectivePreset(
+            store, gameId, ShaderPack.installed(context)
+        )
+        if (bezel != null) {
+            RetroNative.nativeSetShader(
+                shadersOn, bezel.scan, 0f, bezel.blur
+            )
+            RetroNative.nativeSetCrtShader(shadersOn)
+            RetroNative.nativeSetColorProfile(
+                1f, 0f, 1f, 1f, 0f, false
+            )
+            RetroNative.nativeSetCurve(
+                if (bezel.curveOn) {
+                    0.020f * bezel.curveAmount.coerceIn(0, 100) / 100f
+                } else {
+                    0f
+                }
+            )
+            RetroNative.nativeSetRound(
+                if (bezel.roundOn) {
+                    bezel.roundAmount.coerceIn(0, 100) / 100f
+                } else {
+                    0f
+                }
+            )
+        }
     }
     // Flat-outline overlay style: the game's own
     // style wins, else the global style. Keyed on
@@ -334,22 +374,24 @@ private fun GameScreen(
         OverlayStyleStore.forGame(store, gameId)
     }
     // Mega Bezel (adapted) preset for this game:
-    // the per-game shader setting naming an
-    // installed pack preset. Blank means the
-    // built-in Violet look, with no frame. A
-    // missing or corrupt pack yields null here,
-    // so rendering falls back to Violet silently
-    // and the setting itself is left untouched.
-    val bezelPresetName = if (gameId != null) {
-        store.setting("gameShaderPreset:$gameId", "")
-    } else {
-        ""
+    // per-game choice wins, else the app-wide default,
+    // else (pack installed) the first reflective preset;
+    // null means the built-in Violet look, with no frame.
+    // A missing or corrupt pack yields null here, so
+    // rendering falls back to Violet silently and the
+    // setting itself is left untouched. Only reflective
+    // presets (reflection > 0) ever become effective.
+    val installedPresets = remember(store.revision) {
+        ShaderPack.installed(context)
     }
+    val bezelPresetName = ShaderPack.effectivePresetName(
+        store, gameId, installedPresets
+    ) ?: ""
     val bezelPreset = remember(bezelPresetName, store.revision) {
         if (bezelPresetName.isBlank()) {
             null
         } else {
-            ShaderPack.presetByName(context, bezelPresetName)
+            installedPresets.firstOrNull { it.name == bezelPresetName }
         }
     }
     // Keyed on store.revision too, so a layout

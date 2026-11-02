@@ -38,6 +38,20 @@ update to a signed release without an uninstall first.
   to upstream (HyperspaceMadness/Mega_Bezel). The pack contains
   preset values only; no upstream shader code or bezel artwork is
   re-hosted. Without a pack, games use the built-in CRT look.
+- **Mega Bezel shader selection:** choose a reflective preset
+  once as the app-wide default, or per game (per-game wins,
+  "Use default" clears the override). Only presets with a
+  reflection actually count as reflective — every offered
+  preset is labelled "Mega Bezel (adapted) — with reflections".
+  Without a pack, the picker offers the pack download instead
+  of a dead list, and games use the built-in Violet CRT look.
+  A choice applies on the next launch, never mid-session.
+- **Bulk covers:** "Find all covers" in Downloads & settings
+  searches every game in one run, sequentially, with progress
+  ("12 of 47") and Cancel, and a summary at the end (found /
+  already had / skipped custom / title screen only / no match /
+  failed, with failed titles listed). Custom covers are never
+  overwritten; custom-covered games are skipped.
 - **Controller:** replica SNES layout (Mariner's `snesDefaults`),
   flat outline only (transparent fill), exactly two themes —
   **SNES** (real controller colours) and **Flat** (white only) —

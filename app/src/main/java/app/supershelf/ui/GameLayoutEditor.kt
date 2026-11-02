@@ -72,12 +72,22 @@ fun GameLayoutEditor(
         mutableStateOf(GameLayout.load(store, "snes", landscape, gameId))
     }
     var selected by remember { mutableStateOf<String?>(null) }
+    // Style scope matches the layout being edited:
+    // a per-game layout edits the per-game style,
+    // a global layout edits the global style. The
+    // old code always read and saved the global
+    // style, so editing a per-game layout silently
+    // changed every game's overlay instead.
     var style by remember {
-        mutableStateOf(OverlayStyleStore.global(store))
+        mutableStateOf(OverlayStyleStore.forGame(store, gameId))
     }
     fun save() {
         GameLayout.save(store, "snes", landscape, specs, gameId)
-        OverlayStyleStore.saveGlobal(store, style)
+        if (gameId != null) {
+            OverlayStyleStore.saveForGame(store, gameId, style)
+        } else {
+            OverlayStyleStore.saveGlobal(store, style)
+        }
     }
     Column(
         modifier = Modifier.fillMaxSize()
